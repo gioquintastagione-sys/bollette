@@ -16,7 +16,6 @@
         input:focus, select:focus, textarea:focus { border-color: #3498db; outline: none; }
         input[readonly] { background-color: #e9ecef; color: #495057; cursor: not-allowed; border: 1px solid #ced4da; }
         
-        /* Stile pulsante elaborazione manuale */
         .btn-elabora { background-color: #0066cc; color: white; padding: 8px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 5px; font-size: 13px; }
         .btn-elabora:hover { background-color: #0052a3; }
         
@@ -46,20 +45,24 @@
                 <label for="codice_bolletta">Codice Bolletta</label>
                 <input type="text" id="codice_bolletta" required placeholder="Usa la tastiera-scanner...">
             </div>
+            
+            <!-- SCHEDARIO DIVENTA BLOCCATO -->
             <div class="form-group">
-                <label for="schedario">Schedario</label>
-                <input type="text" id="schedario">
+                <label for="schedario">Schedario (Automatico)</label>
+                <input type="text" id="schedario" readonly placeholder="Calcolato da Posizione">
             </div>
+            
+            <!-- POSIZIONE TORNA EDITABILE -->
             <div class="form-group">
-                <label for="posizione">Posizione (Automatico)</label>
-                <input type="text" id="posizione" readonly placeholder="Calcolato da Codice P">
+                <label for="posizione">Posizione</label>
+                <input type="text" id="posizione" placeholder="Inserisci la posizione...">
             </div>
+            
             <div class="form-group">
                 <label for="codice_B">Codice B</label>
                 <input type="text" id="codice_B">
             </div>
             
-            <!-- CAMPO CODICE P CON PULSANTE DI ELABORAZIONE STRUTTURATO -->
             <div class="form-group">
                 <label for="codice_P" style="color: #0066cc;">Codice P (Spara il PagoPa qui)</label>
                 <input type="text" id="codice_P" placeholder="Usa la tastiera-scanner...">
@@ -74,13 +77,10 @@
                 <label for="commissioni">Commissioni (€)</label>
                 <input type="number" step="0.01" id="commissioni" value="0.00">
             </div>
-            
-            <!-- CORRETTO DA DATA RIGRESSO A DATA INGRESSO -->
             <div class="form-group">
                 <label for="ingresso">Data Ingresso</label>
                 <input type="date" id="ingresso">
             </div>
-            
             <div class="form-group">
                 <label for="scadenza">Data Scadenza</label>
                 <input type="date" id="scadenza" required>
@@ -139,21 +139,29 @@
         "00164870233": { fornitore: "AGSM", tipo: "LUCE" }
     };
 
+    // 1. LOGICA AUTOMATICA DA POSIZIONE A SCHEDARIO
+    document.getElementById('posizione').addEventListener('input', function(e) {
+        const testoPosizione = e.target.value.trim();
+        const numeriTrovati = testoPosizione.match(/\d/g);
+        if (numeriTrovati && numeriTrovati.length >= 2) {
+            document.getElementById('schedario').value = numeriTrovati[0] + numeriTrovati[1];
+        } else {
+            document.getElementById('schedario').value = "";
+        }
+    });
+
+    // 2. FUNZIONE DI DECODIFICA PAGOPA FLUIDA ED EVOLUTA
     function eseguiDecodificaPagoPa() {
         const inputP = document.getElementById('codice_P');
         const testoLetto = inputP.value.trim();
-        if (!testoLetto) return;
-
-        // 1. Estrazione Posizione (Prende i primi 2 numeri trovati)
-        const numeriTrovati = testoLetto.match(/\d/g);
-        if (numeriTrovati && numeriTrovati.length >= 2) {
-            document.getElementById('posizione').value = numeriTrovati[0] + numeriTrovati[1];
+        if (!testoLetto) {
+            alert("Il campo Codice P è vuoto! Spara prima il codice.");
+            return;
         }
 
-        // 2. Analisi stringa PagoPa divisa da '|'
+        // Se contiene le barre verticali, è un PagoPa completo
         if (testoLetto.includes('|')) {
             const segmenti = testoLetto.split('|');
-            
             if (segmenti.length >= 4) {
                 const cfEnte = segmenti[3].trim();
                 document.getElementById('ente_creditore').value = cfEnte;
@@ -173,37 +181,24 @@
                     document.getElementById('fornitori').value = databaseFornitori[cfEnte].fornitore;
                     document.getElementById('tipo').value = databaseFornitori[cfEnte].tipo;
                 } else {
-                    document.getElementById('fornitori').value = "NUOVO FORNITORE";
-                    document.getElementById('tipo').value = "DA SPECIFICARE";
+                    document.getElementById('fornitori').value = "POLIS ENERGIA"; // Fornitore predefinito se non a catalogo
+                    document.getElementById('tipo').value = "LUCE";
                 }
-                
                 aggiornaValoreTotale();
+                return;
             }
         }
+        
+        // SE NON CI SONO LE BARRE VERTICALI: Forza la compilazione dei dati fissi richiesti
+        document.getElementById('ente_creditore').value = "05050950657";
+        document.getElementById('tipo_pagamento').value = "PAGOPA";
+        document.getElementById('fornitori').value = "POLIS ENERGIA";
+        document.getElementById('tipo').value = "LUCE";
+        document.getElementById('note').value = "Codice grezzo letto dallo scanner.";
+        alert("⚠️ Codice inserito senza separatori standard. Campi predefiniti inseriti per Polis Energia!");
     }
 
     function aggiornaValoreTotale() {
         const prezzo = parseFloat(document.getElementById('prezzo').value) || 0;
         const commissioni = parseFloat(document.getElementById('commissioni').value) || 0;
         const totale = prezzo + commissioni;
-        document.getElementById('valore').value = totale.toFixed(2);
-    }
-
-    document.getElementById('prezzo').addEventListener('input', aggiornaValoreTotale);
-    document.getElementById('commissioni').addEventListener('input', aggiornaValoreTotale);
-
-    // Gestione dell'invio finale al database Google Sheets
-    document.getElementById('dataForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const btn = document.getElementById('submitBtn');
-        const msg = document.getElementById('statusMessage');
-        btn.disabled = true;
-        btn.innerText = "Salvataggio nel Cloud...";
-        msg.style.display = "none";
-
-        const payload = {
-            stato: document.getElementById('stato').value,
-            codice_bolletta: document.getElementById('codice_bolletta').value,
-            schedario: document.getElementById('schedario').value,
-            posizione: document.getElementById('posizione').value,
-
