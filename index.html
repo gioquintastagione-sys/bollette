@@ -3,26 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestione Bollette - Scanner Definitivo</title>
-    <!-- Inclusione della libreria globale Zxing per la lettura istantanea delle foto -->
+    <title>Gestione Bollette Pro</title>
+    <!-- Libreria per scansione video e immagini -->
     <script src="https://unpkg.com" type="text/javascript"></script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f7f6; margin: 15px; color: #333; }
-        .container { max-width: 700px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .container { max-width: 750px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #2c3e50; margin-bottom: 5px; }
         .subtitle { text-align: center; color: #7f8c8d; margin-bottom: 20px; font-size: 13px; }
         
-        .camera-trigger-zone { background-color: #eef2f7; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; border: 2px dashed #0066cc; }
-        .btn-camera { display: inline-block; background-color: #0066cc; color: white; padding: 14px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+        /* Zona Scanner Superiori */
+        .scanner-panel { background-color: #eef2f7; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 2px dashed #0066cc; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+        .btn-main { background-color: #0066cc; color: white; border: none; padding: 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        .btn-sec { background-color: #3498db; color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
         
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+        /* Griglia Modulo */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
         .form-group { display: flex; flex-direction: column; }
         .form-group.full-width { grid-column: 1 / -1; }
         label { font-weight: bold; margin-bottom: 4px; font-size: 13px; color: #555; }
-        input, select, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        input, select, textarea { padding: 9px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
         
         button[type="submit"] { grid-column: 1 / -1; background-color: #2ecc71; color: white; padding: 14px; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 15px; }
         
+        /* Popup Scanner Video Live */
+        #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; justify-content: center; align-items: center; flex-direction: column; }
+        #reader { width: 90%; max-width: 450px; background: white; padding: 10px; border-radius: 8px; }
+        .close-scanner { margin-top: 15px; background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
         #statusMessage { text-align: center; margin-top: 15px; font-weight: bold; display: none; padding: 10px; border-radius: 4px; }
         .success { background-color: #d4edda; color: #155724; }
         .error { background-color: #f8d7da; color: #721c24; }
@@ -32,14 +40,21 @@
 <body>
 
 <div class="container">
-    <h2>Nuovo Inserimento</h2>
-    <div class="subtitle">Lettura Codici Integrata ad Alta Precisione</div>
+    <h2>Registrazione Bollette</h2>
+    <div class="subtitle">Pannello Cloud collegato a Google Sheets</div>
 
-    <div class="camera-trigger-zone">
-        <label for="sys-camera" class="btn-camera">📷 APRI FOTOCAMERA E SCATTA</label>
-        <input type="file" id="sys-camera" accept="image/*" capture="environment" style="display: none;">
+    <!-- PANNELLO ACQUISIZIONE -->
+    <div class="scanner-panel">
+        <p style="margin:0; font-weight:bold; color:#2c3e50;">Scegli come inserire il codice:</p>
+        <!-- METODO 1: Video dal vivo (Consigliato, corregge la sfocatura da solo) -->
+        <button type="button" class="btn-main" onclick="apriScannerVideo()">🎥 AVVIA SCANNER VIDEO IN DIRETTA</button>
+        
+        <!-- METODO 2: Foto (Se il video non parte) -->
+        <label for="foto-file" class="btn-sec">📷 CARICA FOTO DA GALLERIA</label>
+        <input type="file" id="foto-file" accept="image/*" style="display: none;">
     </div>
 
+    <!-- Modulo Dati -->
     <form id="dataForm">
         <div class="form-grid">
             <div class="form-group">
@@ -96,15 +111,25 @@
             </div>
             <div class="form-group">
                 <label for="fornitori">Fornitore</label>
-                <input type="text" id="fornitori" required>
+                <!-- Lista a discesa modificabile per evitare di scrivere ogni volta -->
+                <select id="fornitori" required>
+                    <option value="">-- Seleziona o scrivi nelle note --</option>
+                    <option value="Enel">Enel</option>
+                    <option value="Eni Plenitude">Eni Plenitude</option>
+                    <option value="Servizio Elettrico Nazionale">Servizio Elettrico Nazionale</option>
+                    <option value="Comune (TARI/Imposte)">Comune (TARI/Imposte)</option>
+                    <option value="Acquedotto">Acquedotto</option>
+                    <option value="Servizio Sanitario">Servizio Sanitario</option>
+                    <option value="Altro">Altro (specifica nelle note)</option>
+                </select>
             </div>
             <div class="form-group">
-                <label for="ente_creditore">Ente Creditore</label>
+                <label for="ente_creditore">Ente Creditore (C.F.)</label>
                 <input type="text" id="ente_creditore">
             </div>
             <div class="form-group">
-                <label for="tipo">Tipo</label>
-                <input type="text" id="tipo">
+                <label for="tipo">Tipo Spesa</label>
+                <input type="text" id="tipo" placeholder="Es. Luce, Gas, Spazzatura">
             </div>
             <div class="form-group">
                 <label for="anno">Anno</label>
@@ -119,7 +144,7 @@
                 <input type="text" id="valore">
             </div>
             <div class="form-group full-width">
-                <label for="note">Note</label>
+                <label for="note">Note aggiuntive</label>
                 <textarea id="note" rows="2"></textarea>
             </div>
             <button type="submit" id="submitBtn">INVIA DATI A GOOGLE SHEETS</button>
@@ -128,80 +153,50 @@
     <div id="statusMessage"></div>
 </div>
 
+<!-- Modal Finestra Live Video -->
+<div id="scanner-modal">
+    <div id="reader"></div>
+    <button type="button" class="close-scanner" onclick="chiudiScannerVideo()">Chiudi X</button>
+</div>
+
 <script>
-    // ⚠️ METTI IL TUO URL DI GOOGLE WEB APP SCRIPT QUI SOTTO
+    // ⚠️ METTI IL TUO URL DI GOOGLE SCRIPT QUI SOTTO
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxykM-qYLvEMtwO7f9f0TAMuIIt0HY89WSIuTjVB4KUF0NyTyKVLG3002qyq7pdMEExTA/exec";
     
+    let html5QrCodeLive = null;
+    const html5QrCodeFile = new Html5Qrcode("reader"); // Istanza di backup per i file
     document.getElementById('anno').value = new Date().getFullYear();
 
-    // Rileva lo scatto della foto
-    document.getElementById('sys-camera').addEventListener('change', function(e) {
-        if (e.target.files.length === 0) return;
+    // ==========================================
+    // METODO 1: SCANNER VIDEO LIVE (CONSIGLIATO)
+    // ==========================================
+    function apriScannerVideo() {
+        document.getElementById('scanner-modal').style.display = 'flex';
+        html5QrCodeLive = new Html5Qrcode("reader");
         
-        const file = e.target.files[0];
-        const msg = document.getElementById('statusMessage');
+        const config = { fps: 24, qrbox: { width: 250, height: 250 } };
         
-        msg.className = "info";
-        msg.innerText = "🔍 Analisi dell'immagine con motore ZXing...";
-        msg.style.display = "block";
+        html5QrCodeLive.start(
+            { facingMode: "environment" }, 
+            config,
+            (text) => { smistaDatiCodice(text); chiudiScannerVideo(); },
+            () => { /* Continua ricerca silente */ }
+        ).catch(() => {
+            alert("Il browser o il sistema blocca lo streaming video. Usa il caricamento foto.");
+            chiudiScannerVideo();
+        });
+    }
 
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = function() {
-                // Inizializza il lettore multi-formato (Legge QR, codici a barre e DataMatrix PagoPa)
-                const codeReader = new ZXing.BrowserMultiFormatReader();
-                
-                codeReader.decodeFromImageElement(img)
-                    .then(result => {
-                        msg.style.display = "none";
-                        const testoCodice = result.text;
-                        
-                        // Logica di scomposizione della stringa PagoPa
-                        if (testoCodice.includes('|')) {
-                            const parti = testoCodice.split('|');
-                            if (parti.length >= 4) {
-                                document.getElementById('codice_bolletta').value = parti[2] || ''; 
-                                document.getElementById('ente_creditore').value = parti[3] || ''; 
-                                let prezzo = parseFloat(parti[4]);
-                                if (!isNaN(prezzo)) {
-                                    if (!parti[4].includes('.')) prezzo = prezzo / 100;
-                                    document.getElementById('prezzo').value = prezzo.toFixed(2);
-                                }
-                                document.getElementById('tipo_pagamento').value = "PagoPa";
-                                alert("✅ Bollettino PagoPa letto correttamente!");
-                                return;
-                            }
-                        }
-                        
-                        // Se è un codice a barre classico o QR normale
-                        document.getElementById('codice_bolletta').value = testoCodice;
-                        alert("✅ Codice letto e inserito!");
-                    })
-                    .catch(err => {
-                        msg.className = "error";
-                        msg.innerText = "❌ Nessun codice nitido trovato. Avvicinati di più e assicurati che il codice sia ben visibile e dritto.";
-                    });
-            };
-        };
-        reader.readAsDataURL(file);
-    });
+    function chiudiScannerVideo() {
+        if (html5QrCodeLive) {
+            html5QrCodeLive.stop().then(() => {
+                document.getElementById('scanner-modal').style.display = 'none';
+            }).catch(() => {
+                document.getElementById('scanner-modal').style.display = 'none';
+            });
+        } else {
+            document.getElementById('scanner-modal').style.display = 'none';
+        }
+    }
 
-    // Invio form (Invariato)
-    document.getElementById('dataForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const btn = document.getElementById('submitBtn');
-        const msg = document.getElementById('statusMessage');
-        btn.disabled = true;
-        btn.innerText = "Salvataggio...";
-        msg.style.display = "block";
-        msg.className = "info";
-        msg.innerText = "Registrazione riga...";
-
-        const payload = {
-            stato: document.getElementById('stato').value,
-            codice_bolletta: document.getElementById('codice_bolletta').value,
-            schedario: document.getElementById('schedario').value,
-            posizione: document.getElementById('posizione').value,
-            codice_B: document.getElementById('codice_B').value,
+    // ==========================================
