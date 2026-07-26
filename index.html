@@ -65,7 +65,7 @@
                 <input type="number" step="0.01" id="commissioni" value="0.00">
             </div>
             <div class="form-group">
-                <label for="ingresso">Data Ingresso</label>
+                <label for="ingresso">Data Rigresso</label>
                 <input type="date" id="ingresso">
             </div>
             <div class="form-group">
@@ -119,33 +119,34 @@
 
     document.getElementById('anno').value = new Date().getFullYear();
 
-    // 📋 DIZIONARIO DEI FORNITORI BASATO SUL CODICE FISCALE DELL'ENTE CREDITORE
     const databaseFornitori = {
         "05050950657": { fornitore: "POLIS ENERGIA", tipo: "GAS" },
         "06377691000": { fornitore: "ENEL ENERGIA", tipo: "LUCE" },
         "01537630174": { fornitore: "A2A ENERGIA", tipo: "GAS" },
         "00164870233": { fornitore: "AGSM", tipo: "LUCE" }
-        // Puoi aggiungere qui sotto altri codici fiscali seguendo lo stesso schema
     };
 
-    document.getElementById('codice_P').addEventListener('input', function(e) {
-        const testoLetto = e.target.value.trim();
+    // FUNZIONE DI ELABORAZIONE UNIFICATA
+    function eseguiDecodificaPagoPa() {
+        const inputP = document.getElementById('codice_P');
+        const testoLetto = inputP.value.trim();
         if (!testoLetto) return;
 
-        // Estrazione Posizione (primi 2 numeri)
+        // 1. Estrazione Posizione (primi 2 numeri)
         const numeriTrovati = testoLetto.match(/\d/g);
         if (numeriTrovati && numeriTrovati.length >= 2) {
-            document.getElementById('posizione').value = numeriTrovati + numeriTrovati;
+            document.getElementById('posizione').value = numeriTrovati[0] + numeriTrovati[1];
         }
 
+        // 2. Analisi stringa con separatore '|'
         if (testoLetto.includes('|')) {
             const segmenti = testoLetto.split('|');
             
             if (segmenti.length >= 4) {
-                const cfEnte = segmenti[3].trim(); // Isola il Codice Fiscale dell'ente dal PagoPa
+                const cfEnte = segmenti[3].trim();
                 document.getElementById('ente_creditore').value = cfEnte;
                 
-                // Conversione Prezzo
+                // Conversione Prezzo sicuro (rimosso bug prezzoClean)
                 let importoGrezzo = segmenti[4].trim();
                 let prezzoPulito = parseFloat(importoGrezzo);
                 if (!isNaN(prezzoPulito)) {
@@ -157,19 +158,29 @@
                 
                 document.getElementById('tipo_pagamento').value = "PAGOPA";
 
-                // 🔄 CONTROLLO DINAMICO DEL FORNITORE E TIPO SPESA
                 if (databaseFornitori[cfEnte]) {
-                    // Se il codice fiscale è censito nel nostro database, compila i dati corretti
                     document.getElementById('fornitori').value = databaseFornitori[cfEnte].fornitore;
                     document.getElementById('tipo').value = databaseFornitori[cfEnte].tipo;
                 } else {
-                    // Se il bollettino appartiene a un nuovo ente non ancora registrato
-                    document.getElementById('fornitori').value = "NUOVO FORNITORE (Verifica CF)";
+                    document.getElementById('fornitori').value = "NUOVO FORNITORE (CF: " + cfEnte + ")";
                     document.getElementById('tipo').value = "DA SPECIFICARE";
                 }
                 
                 aggiornaValoreTotale();
             }
+        }
+    }
+
+    // ASCOLTATORI MULTIPLI PER ABBATTERE I BLOCCHI DELLE TASTIERE SCANNER
+    // Ascolta la digitazione standard
+    document.getElementById('codice_P').addEventListener('input', eseguiDecodificaPagoPa);
+    // Ascolta quando lo scanner perde il focus o passa ad un altro campo
+    document.getElementById('codice_P').addEventListener('change', eseguiDecodificaPagoPa);
+    // Ascolta se lo scanner preme "Invio" in automatico alla fine della lettura
+    document.getElementById('codice_P').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Evita l'invio accidentale del modulo completo
+            eseguiDecodificaPagoPa();
         }
     });
 
@@ -194,10 +205,3 @@
         const payload = {
             stato: document.getElementById('stato').value,
             codice_bolletta: document.getElementById('codice_bolletta').value,
-            schedario: document.getElementById('schedario').value,
-            posizione: document.getElementById('posizione').value,
-            codice_B: document.getElementById('codice_B').value,
-            codice_P: document.getElementById('codice_P').value,
-            prezzo: document.getElementById('prezzo').value,
-            commissioni: document.getElementById('commissioni').value,
-            ingresso: document.getElementById('ingresso').value,
