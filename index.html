@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestione Bollette - Fotocamera di Sistema</title>
+    <title>Gestione Bollette - Scanner Definitivo</title>
+    <!-- Inclusione della libreria globale Zxing per la lettura istantanea delle foto -->
+    <script src="https://unpkg.com" type="text/javascript"></script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f7f6; margin: 15px; color: #333; }
         .container { max-width: 700px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #2c3e50; margin-bottom: 5px; }
         .subtitle { text-align: center; color: #7f8c8d; margin-bottom: 20px; font-size: 13px; }
         
-        /* Pulsante Fotocamera di Sistema */
         .camera-trigger-zone { background-color: #eef2f7; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: center; border: 2px dashed #0066cc; }
         .btn-camera { display: inline-block; background-color: #0066cc; color: white; padding: 14px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
         
@@ -32,11 +33,10 @@
 
 <div class="container">
     <h2>Nuovo Inserimento</h2>
-    <div class="subtitle">Fotocamera di sistema con sblocco automatico permessi</div>
+    <div class="subtitle">Lettura Codici Integrata ad Alta Precisione</div>
 
-    <!-- PULSANTE AD ALTA COMPATIBILITÀ: Attiva direttamente la fotocamera del telefono -->
     <div class="camera-trigger-zone">
-        <label for="sys-camera" class="btn-camera">📷 APRI FOTOCAMERA PER BOLLETTINO</label>
+        <label for="sys-camera" class="btn-camera">📷 APRI FOTOCAMERA E SCATTA</label>
         <input type="file" id="sys-camera" accept="image/*" capture="environment" style="display: none;">
     </div>
 
@@ -134,77 +134,74 @@
     
     document.getElementById('anno').value = new Date().getFullYear();
 
-    // Rileva lo scatto della fotocamera di sistema
-    document.getElementById('sys-camera').addEventListener('change', async function(e) {
+    // Rileva lo scatto della foto
+    document.getElementById('sys-camera').addEventListener('change', function(e) {
         if (e.target.files.length === 0) return;
         
         const file = e.target.files[0];
         const msg = document.getElementById('statusMessage');
         
         msg.className = "info";
-        msg.innerText = "🔍 Elaborazione del codice in corso...";
+        msg.innerText = "🔍 Analisi dell'immagine con motore ZXing...";
         msg.style.display = "block";
 
-        // Verifica se il chip del telefono supporta la lettura nativa dei codici
-        if (!window.BarcodeDetector) {
-            msg.className = "error";
-            msg.innerText = "⚠️ Rilevatore hardware non supportato su questo browser vecchio. Inserisci i dati a mano.";
-            return;
-        }
-
-        try {
-            const detector = new BarcodeDetector({ formats: ['qr_code', 'data_matrix', 'code_128'] });
-            
-            // Carica l'immagine scattata in un oggetto grafico invisibile
+        const reader = new FileReader();
+        reader.onload = function(event) {
             const img = new Image();
-            img.src = URL.createObjectURL(file);
-            img.onload = async () => {
-                const barcodes = await detector.detect(img);
+            img.src = event.target.result;
+            img.onload = function() {
+                // Inizializza il lettore multi-formato (Legge QR, codici a barre e DataMatrix PagoPa)
+                const codeReader = new ZXing.BrowserMultiFormatReader();
                 
-                if (barcodes.length > 0) {
-                    const testoCodice = barcodes[0].rawValue;
-                    msg.style.display = "none";
-                    
-                    // Se riconosce il formato strutturato a barre verticali PagoPa
-                    if (testoCodice.includes('|')) {
-                        const parti = testoCodice.split('|');
-                        if (parti.length >= 4) {
-                            document.getElementById('codice_bolletta').value = parti[2] || ''; 
-                            document.getElementById('ente_creditore').value = parti[3] || ''; 
-                            let prezzo = parseFloat(parti[4]);
-                            if (!isNaN(prezzo)) {
-                                if (!parti[4].includes('.')) prezzo = prezzo / 100;
-                                document.getElementById('prezzo').value = prezzo.toFixed(2);
+                codeReader.decodeFromImageElement(img)
+                    .then(result => {
+                        msg.style.display = "none";
+                        const testoCodice = result.text;
+                        
+                        // Logica di scomposizione della stringa PagoPa
+                        if (testoCodice.includes('|')) {
+                            const parti = testoCodice.split('|');
+                            if (parti.length >= 4) {
+                                document.getElementById('codice_bolletta').value = parti[2] || ''; 
+                                document.getElementById('ente_creditore').value = parti[3] || ''; 
+                                let prezzo = parseFloat(parti[4]);
+                                if (!isNaN(prezzo)) {
+                                    if (!parti[4].includes('.')) prezzo = prezzo / 100;
+                                    document.getElementById('prezzo').value = prezzo.toFixed(2);
+                                }
+                                document.getElementById('tipo_pagamento').value = "PagoPa";
+                                alert("✅ Bollettino PagoPa letto correttamente!");
+                                return;
                             }
-                            document.getElementById('tipo_pagamento').value = "PagoPa";
-                            alert("✅ Bollettino PagoPa analizzato con successo!");
-                            return;
                         }
-                    }
-                    // Se trova un QR o codice generico
-                    document.getElementById('codice_bolletta').value = testoCodice;
-                    alert("✅ Codice inserito!");
-                } else {
-                    msg.className = "error";
-                    msg.innerText = "❌ Nessun codice nitido trovato nella foto. Riprova tenendo il foglio più fermo.";
-                }
+                        
+                        // Se è un codice a barre classico o QR normale
+                        document.getElementById('codice_bolletta').value = testoCodice;
+                        alert("✅ Codice letto e inserito!");
+                    })
+                    .catch(err => {
+                        msg.className = "error";
+                        msg.innerText = "❌ Nessun codice nitido trovato. Avvicinati di più e assicurati che il codice sia ben visibile e dritto.";
+                    });
             };
-        } catch (err) {
-            msg.className = "error";
-            msg.innerText = "Errore durante l'analisi hardware.";
-        }
+        };
+        reader.readAsDataURL(file);
     });
 
-    // Spedizione dei dati a Google Sheets
+    // Invio form (Invariato)
     document.getElementById('dataForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const btn = document.getElementById('submitBtn');
         const msg = document.getElementById('statusMessage');
         btn.disabled = true;
-        btn.innerText = "Salvataggio Cloud...";
+        btn.innerText = "Salvataggio...";
         msg.style.display = "block";
         msg.className = "info";
         msg.innerText = "Registrazione riga...";
 
         const payload = {
             stato: document.getElementById('stato').value,
+            codice_bolletta: document.getElementById('codice_bolletta').value,
+            schedario: document.getElementById('schedario').value,
+            posizione: document.getElementById('posizione').value,
+            codice_B: document.getElementById('codice_B').value,
